@@ -65,7 +65,7 @@ Naive and gated controllers are byte-for-byte identical except for one block in
 // GATE — resourceVersion fencing. The entire difference.
 if r.Lag.IsStale(fw.Name, len(pods.Items)) {   // has my cache caught up to my last write?
 staleSkipsTotal.WithLabelValues("gated").Inc()
-return ctrl.Result{RequeueAfter: 250 * time.Millisecond}, nil   // no -> refuse, requeue
+return ctrl.Result{RequeueAfter: 2 * time.Second}, nil   // no -> refuse, requeue
 }
 // yes -> the read is trustworthy, proceed to decide
 ```
