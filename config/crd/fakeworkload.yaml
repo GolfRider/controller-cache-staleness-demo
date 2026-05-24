@@ -1,0 +1,59 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fakeworkloads.demo.staleness.io
+spec:
+  group: demo.staleness.io
+  scope: Namespaced
+  names:
+    kind: FakeWorkload
+    listKind: FakeWorkloadList
+    plural: fakeworkloads
+    singular: fakeworkload
+    shortNames: [fw]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Desired
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Observed
+          type: integer
+          jsonPath: .status.observedReplicas
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [replicas]
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 0
+            status:
+              type: object
+              properties:
+                observedReplicas:
+                  type: integer
+                observedGeneration:
+                  type: integer
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type: {type: string}
+                      status: {type: string}
+                      reason: {type: string}
+                      message: {type: string}
+                      lastTransitionTime: {type: string}
+                      observedGeneration: {type: integer}
+                    required: [type, status, lastTransitionTime]

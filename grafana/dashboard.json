@@ -1,0 +1,57 @@
+{
+  "title": "Staleness Demo — Naive vs Gated",
+  "uid": "staleness-demo",
+  "schemaVersion": 39,
+  "time": { "from": "now-5m", "to": "now" },
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Wrong Actions (the money panel) — naive climbs, gated flat",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "lineWidth": 3, "pointSize": 6 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "naive" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] },
+          { "matcher": { "id": "byName", "options": "gated" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+        ]
+      },
+      "targets": [
+        { "expr": "sum by (controller) (staleness_demo_wrong_actions_total)", "legendFormat": "{{controller}}" }
+      ],
+      "description": "SYNTHETIC/harness metric: actions contradicting ground truth. Naive takes wrong actions under lag; gated stays flat because the gate refuses stale reads."
+    },
+    {
+      "id": 2,
+      "title": "Cache Lag (the cause) — gap between truth and stale view",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        { "expr": "sum by (controller) (staleness_demo_cache_lag)", "legendFormat": "{{controller}}" }
+      ],
+      "description": "Both controllers see the same injected lag. Lag is the cause; what differs is how each RESPONDS to it."
+    },
+    {
+      "id": 3,
+      "title": "Stale Skips (the intervention) — only gated fires",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        { "expr": "sum by (controller) (rate(staleness_demo_stale_skips_total[1m]))", "legendFormat": "{{controller}}" }
+      ],
+      "description": "resourceVersion fencing in action: gated requeues instead of acting on a stale read. Naive has no gate, so this is structurally zero for naive."
+    },
+    {
+      "id": 4,
+      "title": "Reconcile rate (context)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 17 },
+      "targets": [
+        { "expr": "sum by (controller) (rate(staleness_demo_reconcile_total[1m]))", "legendFormat": "{{controller}}" }
+      ]
+    }
+  ]
+}

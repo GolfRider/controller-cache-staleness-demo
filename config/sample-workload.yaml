@@ -1,0 +1,7 @@
+apiVersion: demo.staleness.io/v1alpha1
+kind: FakeWorkload
+metadata:
+  name: demo
+  namespace: default
+spec:
+  replicas: 5
