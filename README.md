@@ -80,7 +80,7 @@ Same workload, same injected lag, two controllers. The naive controller takes
 wrong actions (creates duplicates it can't see); the gated controller refuses to
 act on the stale read and stays correct.
 
-![Wrong Actions: naive climbs, gated flat at zero](docs/money-panel.png)
+![Wrong Actions: naive climbs, gated flat at zero](docs/grafana-staleness.png)
 
 > Replace `docs/money-panel.png` with your captured Grafana screenshot. The
 > "Wrong Actions" panel — naive (red) climbing, gated (green) flat at 0 — is the
