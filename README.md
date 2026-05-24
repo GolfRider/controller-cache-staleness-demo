@@ -65,7 +65,7 @@ Naive and gated controllers are byte-for-byte identical except for one block in
 // GATE — resourceVersion fencing. The entire difference.
 if r.Lag.IsStale(fw.Name, len(pods.Items)) {   // has my cache caught up to my last write?
 staleSkipsTotal.WithLabelValues("gated").Inc()
-return ctrl.Result{RequeueAfter: 2 * time.Second}, nil   // no -> refuse, requeue
+return ctrl.Result{RequeueAfter: 2 * time.Second}, nil   // no -> refuse, requeue with backoff
 }
 // yes -> the read is trustworthy, proceed to decide
 ```
@@ -73,6 +73,18 @@ return ctrl.Result{RequeueAfter: 2 * time.Second}, nil   // no -> refuse, requeu
 The gate does not make the cache fresher. It makes the controller **honest about
 when the cache isn't fresh** — converting "act confidently on a stale read" into
 "wait until the read is trustworthy."
+
+## The result in one panel
+
+Same workload, same injected lag, two controllers. The naive controller takes
+wrong actions (creates duplicates it can't see); the gated controller refuses to
+act on the stale read and stays correct.
+
+![Wrong Actions: naive climbs, gated flat at zero](docs/money-panel.png)
+
+> Replace `docs/money-panel.png` with your captured Grafana screenshot. The
+> "Wrong Actions" panel — naive (red) climbing, gated (green) flat at 0 — is the
+> single image this project exists to produce.
 
 ## Architecture — where staleness bites, and the one fork that matters
 
@@ -169,6 +181,86 @@ make burst           # (context) real churn storm via kwok
 5. **Idempotency** — the precondition that makes requeue-and-retry safe; fix first if missing
 6. **Finalizers** — stale reads + finalizer state is a known nasty interaction on deletion
 7. **Conditions** — report observed state so operators can see drift
+
+---
+
+## When to enforce this (the A+B+C test)
+
+resourceVersion fencing is **not** a default you bolt onto every controller. It
+adds requeues and latency, and most reconciles don't need it. The discipline is
+knowing *when*. Fence when roughly **all three** conditions hold:
+
+**A — Read-your-own-write dependency.** Your decision depends on observing the
+effects of writes *you* recently made. A controller that creates child objects
+and then counts them to decide next steps is exposed. A controller that only
+reflects spec into status, or only reads objects it never mutates, largely isn't.
+
+**B — The action is irreversible or amplifying.** Stale read → wrong action only
+matters if the wrong action *hurts*:
+- *Irreversible:* deletes. Delete a pod/PVC because a stale read said "extra" and
+  the work/data is gone (the zookeeper-operator incident).
+- *Amplifying:* creates that compound. Create duplicates because a stale read said
+  "too few," and the next reconcile is even more confused (this demo: 5 → 8 → 11).
+
+If the wrong action is harmless and self-corrects on the next fresh reconcile,
+idempotent reconciliation already covers you — skip the gate.
+
+**C — Churn pushes you past the staleness threshold.** On a calm controller the
+cache is fresh in milliseconds and the lag window never overlaps a decision; the
+gate is dead weight. It earns its cost only when event/write volume is high enough
+that the lag window *regularly* overlaps your decision window. This is the
+condition AI-shaped churn (gang failures, autoscale/preemption storms) makes
+common — and why a tail risk is becoming a constant one.
+
+**Miss any one and the gate is probably over-engineering.** The mental model:
+*fence when you act on your own recent writes (A), the action bites (B), and churn
+makes the lag real (C).*
+
+This is also why KEP-5647 onboarded exactly four controllers — DaemonSet,
+StatefulSet, ReplicaSet, Job. They're the pod-managing, count-and-act, high-
+contention ones: precisely A+B+C. Core didn't fence everything; it fenced the
+controllers that meet the test. The KEP states the principle directly: it adds
+read-after-write guarantees "at critical decision points" and only "to controllers
+where we have observed issues due to stale reads." Apply the same test to your own
+controllers.
+
+The code to fence is becoming cheap (and will be cheaper once a reusable framework
+exists — which the KEP says it doesn't yet). The *judgment* of where to apply it
+never gets automated. That judgment is A+B+C.
+
+---
+
+## Resilience & failure modes
+
+**Crash during lag is self-healing for future decisions.** The gate's
+last-write-RV tracking lives in memory; a crash loses it. But on restart the
+informer rebuilds via a fresh LIST that already reflects the controller's
+committed writes, so the rebuilt cache is fresh by construction and the gate
+correctly allows progress. Correctness here lives in **idempotent reconciliation
+from a fresh cache**, not in the gate — the gate is a guard that prevents
+irreversible wrong actions *during* the stale window; it cannot undo an action
+already committed to etcd. KEP-5647 explicitly lists consistent-cache-on-restart
+as an open edge case (depends on kubernetes/kubernetes#59848), so this is an
+acknowledged boundary, not a solved guarantee.
+
+**What the gate does NOT do:** roll back wrong actions already written; protect
+against spec staleness (that's `observedGeneration`'s job — a *different* fence,
+see below); or make the cache itself fresher. It only refuses to *act* until the
+read is trustworthy.
+
+---
+
+## Why `observedGeneration` isn't enough
+
+A fair objection: "don't we already have a staleness fence?" `observedGeneration`
+answers *"have I seen the latest **spec**?"* — it fences the desired-state
+round-trip, and `generation` bumps only on spec edits. But the staleness this demo
+is about lives in the cache of the **child objects you manage** (pods), not in the
+spec. Under churn the spec sits still (`generation` stable, `observedGeneration`
+satisfied — "all caught up!") while your pod cache is seconds behind, and you take
+a wrong action *with the conventional fence reporting green the whole time*.
+`observedGeneration` isn't wrong; it's pointed at the wrong object.
+resourceVersion fencing on the objects you act on is the fence it can't be.
 
 ---
 
