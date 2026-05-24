@@ -83,7 +83,7 @@ act on the stale read and stays correct.
 ![Wrong Actions: naive climbs, gated flat at zero](docs/grafana-staleness.png)
 
 > The "Wrong Actions" panel — naive (red) climbing, gated (green) flat at 0 — is the
-> single image this project exists to produce.
+> single most important image for this project demo.
 
 ## Architecture — where staleness bites, and the one fork that matters
 
