@@ -1,0 +1,17 @@
+# build output
+bin/
+*.exe
+
+# go
+go.sum.bak
+vendor/
+
+# local demo artifacts
+*.tar.gz
+prometheus.yaml
+prometheus.yml
+
+# editor / OS
+.DS_Store
+.idea/
+*.swp
